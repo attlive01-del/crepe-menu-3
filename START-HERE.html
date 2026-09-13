@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دليل تشغيل Crepe Menu</title>
+<style>
+body{margin:0;background:#f7f6f2;color:#202733;font-family:system-ui,-apple-system,Arial,sans-serif;line-height:1.9}main{max-width:850px;margin:auto;padding:24px 20px 60px}h1{font-size:28px;line-height:1.5}h2{font-size:21px;margin-top:30px}p,li{font-size:16px}section{background:white;border:1px solid #ddd;border-radius:12px;padding:20px;margin-top:18px}a{color:#075f8b}code,pre,textarea{font-family:ui-monospace,monospace}code{direction:ltr;unicode-bidi:isolate;overflow-wrap:anywhere}pre{direction:ltr;text-align:left;background:#f3f5f7;padding:15px;border-radius:8px;overflow:auto;font-size:13px;line-height:1.7}textarea{direction:ltr;text-align:left;box-sizing:border-box;width:100%;height:280px;padding:12px;white-space:pre;font-size:12px;border:1px solid #adb5bd;border-radius:8px}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid #ddd;padding:10px;text-align:right;overflow-wrap:anywhere}th{background:#f4f5f7}button{background:#f3c74a;color:#1d2530;border:0;border-radius:8px;padding:10px 16px;font:inherit;cursor:pointer;margin:8px 0}.note{border-right:4px solid #d3a423;padding:12px 16px;background:#fff8db}.small{font-size:14px;color:#505b67}.scroll{overflow-x:auto}ol,ul{padding-right:22px}li{margin:8px 0}@media print{body{background:white}main{max-width:none}section{break-inside:avoid}button{display:none}textarea{height:320px}a{color:inherit}}
+</style>
+</head>
+<body><main>
+<h1>دليل تشغيل مشروع Crepe Menu المعدّل</h1>
+<p>الحزمة تضم ملفات المشروع الكاملة، وإعداد Supabase، والاختبارات، وتعليمات بناء التطبيق. فك ضغط <b>crepe-menu-complete.zip</b> للحصول على مجلد <b>crepe-menu</b>.</p>
+<p class="note">هذه ملفات المصدر القابلة للبناء. نسخة Android بصيغة APK تُنشأ لاحقًا من GitHub Actions. يمكنك استخدام الموقع من متصفح الآيفون بعد نشره. لم تُعدّل قاعدة Supabase الحية أو تُنشر هذه النسخة أثناء تجهيز الملفات.</p>
+
+<section><h2>1. جهّز نسخة احتياطية</h2>
+<p>استخدم مشروع Supabase الحالي المرتبط بقائمتك. احتفظ بنسخة احتياطية من قاعدة البيانات قبل تطبيق SQL؛ إن كانت لديك تعديلات خاصة على الجداول فراجعها أولًا أو جرّب التحديث في مشروع تجريبي.</p>
+<p>ملف SQL يحافظ على صفوف القائمة، ويضيف صلاحيات الإدارة وإصدارات البيانات. يزيل عمود <code>admin_pin</code> القديم وسياسات الوصول القديمة للجداول المحددة. بعد تطبيقه ستحتاج النسخة الجديدة وحساب المدير للتعديل؛ الواجهة القديمة غير المسجّلة لن تستطيع الحفظ.</p>
+<p>إذا كانت على جهازك تغييرات قديمة لم تُرفع إلى Supabase، احتفظ ببيانات المتصفح قبل مسحها؛ النسخة الجديدة لا ترسل الطابور القديم تلقائيًا. التفاصيل في README داخل المشروع.</p></section>
+
+<section><h2>2. طبّق إعداد Supabase</h2>
+<ol>
+<li>افتح <a href="https://supabase.com/dashboard">لوحة Supabase</a> واختر المشروع الصحيح.</li>
+<li>افتح <b>SQL Editor</b> ثم أنشئ استعلامًا جديدًا.</li>
+<li>الصق محتوى الملف <code>supabase/migrations/202609130001_secure_menu.sql</code> كاملًا، ثم اضغط <b>Run</b>. يمكنك أيضًا نسخه من المربع أدناه؛ هو نفس الملف المرفق باسم <code>crepe-menu-supabase.sql</code>.</li>
+<li>انتظر نتيجة النجاح قبل الانتقال إلى إنشاء المدير. إذا ظهر خطأ، احتفظ برسالته ولا تنفّذ الأوامر على أجزاء عشوائية.</li>
+</ol>
+<p>السكربت يجهز الجداول وسياسات RLS وقائمة المديرين وتحديثات Realtime وحاوية الصور <code>crepe-menu-images</code>. يمكن تكراره على البنية المتوافقة. إذا سبق أن أنشأت سياسات Storage عامة أخرى، راجعها لأنها لا تُحذف بهذا السكربت.</p>
+<button type="button" data-copy="migration">نسخ SQL كاملًا</button><p id="copy-status" class="small" role="status"></p>
+<textarea id="migration" readonly aria-label="SQL إعداد Supabase">-- Run as the project owner in Supabase SQL Editor after a backup.
+-- Public menu reads; only Auth users explicitly in menu_admins can edit.
+BEGIN;
+CREATE TABLE IF NOT EXISTS public.categories (
+  id text PRIMARY KEY, name text NOT NULL, icon text, sort_order int DEFAULT 1,
+  created_at timestamptz DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.menu_items (
+  id text PRIMARY KEY, category_id text REFERENCES public.categories(id) ON DELETE CASCADE,
+  name text NOT NULL, description text, price numeric NOT NULL, image_url text,
+  is_available boolean DEFAULT true, badge text, created_at timestamptz DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.cart_settings (
+  id text PRIMARY KEY DEFAULT &#x27;main_settings&#x27;, cart_name text DEFAULT &#x27;عربة كريب الملوك&#x27;,
+  cart_tagline text DEFAULT &#x27;&#x27;, cart_logo_url text, currency text DEFAULT &#x27;$&#x27;,
+  whatsapp_number text, enable_whatsapp_order boolean DEFAULT false,
+  enable_dual_currency boolean DEFAULT true, base_currency text DEFAULT &#x27;USD&#x27;,
+  exchange_rate numeric DEFAULT 89500, updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.cart_settings DROP COLUMN IF EXISTS admin_pin;
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.menu_items ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.cart_settings ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+UPDATE public.cart_settings SET updated_at = now() WHERE updated_at IS NULL;
+ALTER TABLE public.cart_settings ALTER COLUMN updated_at SET DEFAULT now();
+ALTER TABLE public.cart_settings ALTER COLUMN updated_at SET NOT NULL;
+INSERT INTO public.cart_settings (id) VALUES (&#x27;main_settings&#x27;) ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS public.menu_admins (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE
+);
+ALTER TABLE public.menu_admins ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.menu_admins FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.menu_admins TO authenticated;
+
+-- Permissive policies are OR-ed together: remove legacy policies on these app tables.
+DO $$
+DECLARE p record; t text;
+BEGIN
+  FOR p IN SELECT schemaname, tablename, policyname FROM pg_policies
+    WHERE schemaname = &#x27;public&#x27; AND tablename IN (&#x27;categories&#x27;, &#x27;menu_items&#x27;, &#x27;cart_settings&#x27;, &#x27;menu_admins&#x27;)
+  LOOP EXECUTE format(&#x27;DROP POLICY %I ON %I.%I&#x27;, p.policyname, p.schemaname, p.tablename); END LOOP;
+  FOR t IN SELECT unnest(ARRAY[&#x27;categories&#x27;, &#x27;menu_items&#x27;, &#x27;cart_settings&#x27;])
+  LOOP
+    EXECUTE format(&#x27;ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY&#x27;, t);
+    EXECUTE format(&#x27;REVOKE ALL ON public.%I FROM PUBLIC, anon, authenticated&#x27;, t);
+    EXECUTE format(&#x27;GRANT SELECT ON public.%I TO anon, authenticated&#x27;, t);
+    EXECUTE format(&#x27;GRANT INSERT, UPDATE, DELETE ON public.%I TO authenticated&#x27;, t);
+    EXECUTE format(&#x27;CREATE POLICY menu_read ON public.%I FOR SELECT TO anon, authenticated USING (true)&#x27;, t);
+    EXECUTE format(&#x27;CREATE POLICY admin_insert ON public.%I FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM public.menu_admins WHERE user_id = (SELECT auth.uid())))&#x27;, t);
+    EXECUTE format(&#x27;CREATE POLICY admin_update ON public.%I FOR UPDATE TO authenticated USING (EXISTS (SELECT 1 FROM public.menu_admins WHERE user_id = (SELECT auth.uid()))) WITH CHECK (EXISTS (SELECT 1 FROM public.menu_admins WHERE user_id = (SELECT auth.uid())))&#x27;, t);
+    EXECUTE format(&#x27;CREATE POLICY admin_delete ON public.%I FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM public.menu_admins WHERE user_id = (SELECT auth.uid())))&#x27;, t);
+  END LOOP;
+END $$;
+CREATE POLICY admin_self_read ON public.menu_admins FOR SELECT TO authenticated USING (user_id = (SELECT auth.uid()));
+
+CREATE OR REPLACE FUNCTION public.menu_touch_updated_at() RETURNS trigger
+LANGUAGE plpgsql SET search_path = &#x27;&#x27; AS $$
+BEGIN NEW.updated_at = clock_timestamp(); RETURN NEW; END $$;
+DO $$
+DECLARE t text;
+BEGIN
+  FOR t IN SELECT unnest(ARRAY[&#x27;categories&#x27;, &#x27;menu_items&#x27;, &#x27;cart_settings&#x27;])
+  LOOP
+    EXECUTE format(&#x27;DROP TRIGGER IF EXISTS menu_updated_at ON public.%I&#x27;, t);
+    EXECUTE format(&#x27;CREATE TRIGGER menu_updated_at BEFORE UPDATE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.menu_touch_updated_at()&#x27;, t);
+  END LOOP;
+END $$;
+
+-- NOT VALID preserves legacy rows for review while checking every new/updated row.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = &#x27;public.menu_items&#x27;::regclass AND conname = &#x27;menu_price_valid&#x27;) THEN
+    ALTER TABLE public.menu_items ADD CONSTRAINT menu_price_valid CHECK (price &gt;= 0 AND price &lt; &#x27;Infinity&#x27;::numeric) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = &#x27;public.cart_settings&#x27;::regclass AND conname = &#x27;menu_rate_valid&#x27;) THEN
+    ALTER TABLE public.cart_settings ADD CONSTRAINT menu_rate_valid CHECK (exchange_rate IS NOT NULL AND exchange_rate &gt; 0 AND exchange_rate &lt; &#x27;Infinity&#x27;::numeric) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = &#x27;public.cart_settings&#x27;::regclass AND conname = &#x27;menu_base_valid&#x27;) THEN
+    ALTER TABLE public.cart_settings ADD CONSTRAINT menu_base_valid CHECK (base_currency IS NOT NULL AND base_currency IN (&#x27;USD&#x27;,&#x27;LBP&#x27;)) NOT VALID;
+  END IF;
+END $$;
+CREATE OR REPLACE FUNCTION public.menu_guard_base_currency() RETURNS trigger
+LANGUAGE plpgsql SET search_path = &#x27;&#x27; AS $$
+BEGIN
+  IF NEW.base_currency IS DISTINCT FROM OLD.base_currency AND EXISTS (SELECT 1 FROM public.menu_items) THEN
+    RAISE EXCEPTION &#x27;Convert all existing prices before changing the base currency&#x27;;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS menu_base_currency ON public.cart_settings;
+CREATE TRIGGER menu_base_currency BEFORE UPDATE ON public.cart_settings
+  FOR EACH ROW EXECUTE FUNCTION public.menu_guard_base_currency();
+CREATE INDEX IF NOT EXISTS menu_items_category_idx ON public.menu_items(category_id);
+
+-- Only images intended for the public menu belong in this bucket.
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (&#x27;crepe-menu-images&#x27;, &#x27;crepe-menu-images&#x27;, true, 2097152, ARRAY[&#x27;image/jpeg&#x27;, &#x27;image/png&#x27;, &#x27;image/webp&#x27;])
+ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = 2097152,
+  allowed_mime_types = ARRAY[&#x27;image/jpeg&#x27;, &#x27;image/png&#x27;, &#x27;image/webp&#x27;];
+DROP POLICY IF EXISTS menu_admin_image_upload ON storage.objects;
+CREATE POLICY menu_admin_image_upload ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = &#x27;crepe-menu-images&#x27; AND EXISTS (
+  SELECT 1 FROM public.menu_admins WHERE user_id = (SELECT auth.uid())
+));
+
+DO $$
+DECLARE t text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = &#x27;supabase_realtime&#x27;) THEN
+    CREATE PUBLICATION supabase_realtime;
+  END IF;
+  IF NOT (SELECT puballtables FROM pg_publication WHERE pubname = &#x27;supabase_realtime&#x27;) THEN
+    FOR t IN SELECT unnest(ARRAY[&#x27;categories&#x27;, &#x27;menu_items&#x27;, &#x27;cart_settings&#x27;])
+    LOOP
+      IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = &#x27;supabase_realtime&#x27; AND schemaname = &#x27;public&#x27; AND tablename = t) THEN
+        EXECUTE format(&#x27;ALTER PUBLICATION supabase_realtime ADD TABLE public.%I&#x27;, t);
+      END IF;
+    END LOOP;
+  END IF;
+END $$;
+COMMIT;
+</textarea>
+</section>
+
+<section><h2>3. أنشئ حساب المدير</h2>
+<ol>
+<li>في مشروع Supabase نفسه، افتح <b>Authentication → Users</b>.</li>
+<li>أنشئ مستخدمًا ببريد إلكتروني تملكه وكلمة مرور تختارها. أكّد البريد، أو استخدم خيار تأكيد المستخدم أثناء إنشائه إذا كان ظاهرًا.</li>
+<li>ارجع إلى <b>SQL Editor</b> ونفّذ النص التالي بعد استبدال <code>YOUR_ADMIN_EMAIL</code> بنفس البريد الذي أنشأت به المستخدم:</li>
+</ol>
+<pre id="admin-sql"><code>insert into public.menu_admins (user_id)
+select id from auth.users
+where email = 'YOUR_ADMIN_EMAIL'
+on conflict (user_id) do nothing
+returning user_id;</code></pre>
+<button type="button" data-copy="admin-sql">نسخ أمر إضافة المدير</button>
+<p>إن أعاد الاستعلام معرّفًا، تمت إضافة صلاحية الإدارة. إن لم يُرجع صفًا، فقد يكون الحساب مديرًا مسبقًا أو البريد غير موجود. يمكنك التحقق باستبدال البريد هنا أيضًا:</p>
+<pre><code>select u.id, u.email
+from auth.users u
+join public.menu_admins a on a.user_id = u.id
+where u.email = 'YOUR_ADMIN_EMAIL';</code></pre>
+<p>يجب أن يظهر صف الحساب. كلمة المرور لا تُكتب في SQL أو في ملفات المشروع. العضوية في <code>menu_admins</code> هي التي تمنح صلاحية الإدارة.</p>
+</section>
+
+<section><h2>4. انسخ بيانات الاتصال</h2>
+<p>من زر <b>Connect</b> داخل مشروع Supabase انسخ <b>Project URL</b> و<b>Publishable key</b>. ويمكن العثور على المفتاح من <b>Settings → API Keys</b>. استخدم بيانات نفس المشروع الذي نفّذت فيه SQL.</p>
+<div class="scroll"><table><thead><tr><th>اسم متغير البيئة في تطبيقك</th><th>القيمة</th></tr></thead><tbody>
+<tr><td><code>VITE_SUPABASE_URL</code></td><td>عنوان مشروع Supabase، مثل <code>https://YOUR_PROJECT.supabase.co</code></td></tr>
+<tr><td><code>VITE_SUPABASE_ANON_KEY</code></td><td>المفتاح العام الذي يبدأ بـ <code>sb_publishable_</code>. هذا الاسم ثابت في الكود ويقبل أيضًا مفتاح anon القديم.</td></tr>
+<tr><td><code>VITE_PUBLIC_MENU_URL</code></td><td>عنوان موقعك المنشور بصيغة HTTPS، مثل <code>https://YOUR_MENU.vercel.app/</code>، دون <code>#/admin</code>.</td></tr>
+</tbody></table></div>
+<p>المفتاح العام متوقع ظهوره في تطبيق المتصفح؛ الحماية تعتمد على RLS وتسجيل الدخول. لا تستخدم <code>service_role</code> أو <code>sb_secret_</code> في هذه المتغيرات. <a href="https://supabase.com/docs/guides/getting-started/api-keys">مرجع مفاتيح Supabase</a>.</p>
+</section>
+
+<section><h2>5. ارفع ملفات المشروع إلى GitHub</h2>
+<p>هذه الخطوة أسهل من كمبيوتر حتى تتمكن من رفع المجلدات مع الاحتفاظ بمساراتها.</p>
+<ol>
+<li>فك ضغط الحزمة. افتح مجلد <b>crepe-menu</b> الذي يحتوي <code>package.json</code> و<code>src</code>.</li>
+<li>افتح مستودع <a href="https://github.com/attlive01-del/crepe-menu">attlive01-del/crepe-menu</a> ثم <b>Add file → Upload files</b>.</li>
+<li>ارفع محتويات مجلد المشروع في جذر المستودع مع استبدال الملفات المطابقة والحفاظ على المجلدات. يجب أن يبقى <code>package.json</code> في الجذر، دون وضع المشروع داخل مجلد إضافي. رفع ZIP وحده لا يحدّث التطبيق.</li>
+<li>تأكد من وجود <code>package-lock.json</code> ومن وصول ملفات <code>.github/workflows</code>؛ قد يخفي جهازك أسماء الملفات التي تبدأ بنقطة. إذا كان <code>bun.lock</code> القديم ما زال في المستودع، احذفه لأن هذه النسخة تعتمد npm.</li>
+<li>اكتب رسالة مثل <code>Fix menu authentication and saving</code> واحفظ التغييرات على <b>main</b> كما طلبت. راجع أي تعديلات أحدث أجريتها أنت قبل استبدال ملفاتها.</li>
+</ol>
+<p>إذا كان Vercel ينشر تلقائيًا من main، اضبط متغيرات البيئة الموضحة في الخطوة التالية قبل حفظ تغييرات GitHub. <a href="https://docs.github.com/en/repositories/working-with-files/managing-files/adding-a-file-to-a-repository">دليل رفع الملفات إلى GitHub</a>.</p>
+</section>
+
+<section><h2>6. شغّل الموقع على Vercel</h2>
+<p>إذا كنت تستخدم Vercel، افتح المشروع المرتبط بمستودعك، ثم <b>Settings → Environment Variables</b>. أضف المتغيرات الثلاثة في الجدول السابق، وحدد بيئة <b>Production</b>، وأضفها إلى <b>Preview</b> أيضًا إذا كنت ستختبر نسخة معاينة. اضغط حفظ.</p>
+<p>إعدادات البناء لهذه النسخة: <b>Framework: Vite</b>، و<b>Install Command: <code>npm ci</code></b>، و<b>Build Command: <code>npm run build</code></b>، و<b>Output Directory: <code>dist</code></b>، مع Node.js 22 أو أحدث. إذا كان مشروعك مضبوطًا على Bun، عدّل أمر التثبيت إلى npm.</p>
+<p>بعد رفع الملفات أنشئ نشرًا جديدًا أو استخدم <b>Redeploy</b>، لأن تغيير متغيرات البيئة لا يغيّر النسخة التي بُنيت سابقًا. استخدم رابط الإنتاج الثابت الذي يفتحه الزبائن؛ ضعه في <code>VITE_PUBLIC_MENU_URL</code> قبل توليد وطباعة QR. <a href="https://vercel.com/docs/environment-variables">دليل متغيرات Vercel</a>.</p>
+<p>للتشغيل المحلي على كمبيوتر، انسخ <code>.env.example</code> إلى <code>.env.local</code> واضبط القيم، ثم شغّل:</p>
+<pre><code>npm ci
+npm run check
+npm run dev</code></pre>
+</section>
+
+<section><h2>7. ادخل لوحة الإدارة وتحقق من التشغيل</h2>
+<p>افتح رابط الموقع العادي لرؤية قائمة الزبائن. للدخول كمدير أضف <code>#/admin</code> إلى نهاية الرابط، مثل <code>https://YOUR_MENU.vercel.app/#/admin</code>، ثم أدخل بريد المستخدم وكلمة مروره.</p>
+<ol>
+<li>جرّب تعديل سعر واحد، ثم حدّث الصفحة وتأكد أن السعر محفوظ.</li>
+<li>جرّب رفع صورة منتج صغيرة. تأكد أنها تظهر بعد الحفظ.</li>
+<li>افتح رابط الزبائن في نافذة خاصة أو هاتف آخر. يجب أن تظهر القائمة دون أدوات الإدارة؛ فتح <code>#/admin</code> دون جلسة مدير يعرض تسجيل الدخول.</li>
+<li>جرّب QR على جهاز آخر قبل طباعته؛ يجب أن يفتح الموقع المنشور وليس localhost.</li>
+</ol>
+<p>الحفظ يحتاج اتصالًا بالخادم. صور حاوية <code>crepe-menu-images</code> عامة للزبائن، والحد بعد الضغط 2 ميغابايت. تغيير العملة الأساسية مع وجود أصناف متوقف حتى لا تتغيّر دلالة الأسعار دون تحويلها؛ يمكن تعديل سعر الصرف.</p>
+</section>
+
+<section><h2>8. إنشاء APK لأندرويد عند الحاجة</h2>
+<ol>
+<li>في مستودع GitHub افتح <b>Settings → Secrets and variables → Actions</b>.</li>
+<li>في تبويب <b>Secrets</b> أضف عبر <b>New repository secret</b> كلًا من <code>VITE_SUPABASE_URL</code> و<code>VITE_SUPABASE_ANON_KEY</code> بالقيم نفسها.</li>
+<li>في تبويب <b>Variables</b> أضف <code>VITE_PUBLIC_MENU_URL</code> برابط موقعك المنشور.</li>
+<li>افتح <b>Actions → Build Android APK → Run workflow</b> واختر main.</li>
+<li>بعد اكتمال المهمة بنجاح، افتح النتيجة ونزّل الحزمة <b>CrepeCart-Menu-App-Debug</b> من <b>Artifacts</b>. فك ضغطها للحصول على <code>app-debug.apk</code>.</li>
+</ol>
+<p>هذا APK تجريبي لأندرويد، ولا يُثبّت على الآيفون. إصدار متجر Google Play يحتاج إعداد توقيع ونسخة Release مستقلًا. إن فشل التشغيل التلقائي قبل إضافة المتغيرات، شغّل المهمة مرة أخرى بعد ضبطها. <a href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets">دليل أسرار GitHub Actions</a>.</p>
+</section>
+
+<section><h2>إذا ظهر خطأ</h2>
+<div class="scroll"><table><thead><tr><th>الرسالة أو الحالة</th><th>ما تتحقق منه</th></tr></thead><tbody>
+<tr><td>إعدادات الاتصال مفقودة</td><td>أسماء المتغيرات مطابقة للجدول، ثم أعد البناء والنشر.</td></tr>
+<tr><td>menu_admins أو updated_at غير موجود</td><td>طبّق SQL كاملًا في نفس مشروع بيانات الاتصال.</td></tr>
+<tr><td>هذا الحساب غير مخوّل</td><td>الحساب أُنشئ في Authentication، والبريد المستخدم أُضيف إلى menu_admins.</td></tr>
+<tr><td>تعذر تسجيل الدخول</td><td>البريد وكلمة المرور صحيحان، والبريد مؤكّد، وتسجيل الدخول بالبريد مفعّل في Supabase.</td></tr>
+<tr><td>فشل رفع الصورة</td><td>وجود حاوية الصور وسياسة الرفع بعد SQL، وصلاحية المدير، والاتصال وحجم الصورة.</td></tr>
+<tr><td>خطأ في SQL أو مهمة APK</td><td>احتفظ بنص الخطأ من النتيجة لإرساله للمراجعة، دون إرسال كلمات المرور أو المفاتيح السرية.</td></tr>
+</tbody></table></div>
+</section>
+
+<p class="small">التحقق المنجز على هذه النسخة: 21 اختبارًا ناجحًا، نجاح TypeScript strict وبناء Vite، وعدم ظهور ثغرات معروفة في npm audit وقت الفحص. اختبارات SQL كانت على PostgreSQL محلي عبر PGlite؛ لم يُختبر مشروع Supabase الحي، ولم يُنفّذ اختبار متصفح تفاعلي شامل أو اختبار APK فعلي. مرجع الكود الأساسي: 70dee2c90879d9c760e9f8cfbf2a4a2d49996c98.</p>
+</main>
+<script>
+for (const button of document.querySelectorAll('[data-copy]')) {
+  button.addEventListener('click', async () => {
+    const element = document.getElementById(button.dataset.copy);
+    const value = element instanceof HTMLTextAreaElement ? element.value : element.textContent;
+    try { await navigator.clipboard.writeText(value); button.textContent = 'تم النسخ'; }
+    catch {
+      if (element instanceof HTMLTextAreaElement) { element.focus(); element.select(); }
+      else { const range = document.createRange(); range.selectNodeContents(element); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range); }
+      button.textContent = 'اضغط مطولًا على النص المحدد ثم اختر نسخ';
+    }
+  });
+}
+</script>
+</body></html>
